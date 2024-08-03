@@ -1,58 +1,53 @@
 package telran.employees.net;
 
+import java.util.Scanner;
+
 import telran.employees.*;
 import telran.io.Persistable;
 import telran.net.Protocol;
 import telran.net.TcpServer;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import static telran.net.TcpConfigurationProperties.*;
 
 public class CompanyServerAppl {
+
 	private static final String FILE_NAME = "employeesTest.data";
 	private static final int PORT = 5000;
 
 	public static void main(String[] args) {
-		Company company = new CompanyMapsImpl();
-		try {
-			((Persistable) company).restore(FILE_NAME);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
+		Company company = new CompanyMapsImpl();
+		Persistable persistable = null;
+		if (company instanceof Persistable) {
+			persistable = (Persistable) company;
+		}
+		if (persistable != null) {
+			try {
+				persistable.restore(FILE_NAME);
+			} catch (Exception e) {
+
+			}
+		}
 		Protocol protocol = new CompanyProtocol(company);
 		TcpServer tcpServer = new TcpServer(protocol, PORT);
-
 		Thread serverThread = new Thread(tcpServer);
 		serverThread.start();
-		boolean shutdownFlag = false;
-
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-			String command;
-			System.out.println("Enter 'shutdown' to stop the server:");
-			while (!shutdownFlag && (command = reader.readLine()) != null) {
-
-				if ("shutdown".equalsIgnoreCase(command)) {
+		boolean running = true;
+		try (Scanner scanner = new Scanner(System.in);) {
+			while (running) {
+				System.out.println(String.format("Enter %s for the server shutdown", SHUTDOWN));
+				String line = scanner.nextLine();
+				if (line != null && line.equals(SHUTDOWN)) {
+					running = false;
 					tcpServer.shutdown();
-					shutdownFlag = true;
-					while (serverThread.isAlive()) {
-						try {
-							serverThread.join(100);
-						} catch (InterruptedException e) {
-							throw new RuntimeException(e.getMessage());
-						}
+					serverThread.join();
+					if (persistable != null) {
+						persistable.save(FILE_NAME);
 					}
 				}
 			}
-		} catch (Exception e) {
-			throw new RuntimeException(e.getMessage());
+		} catch (InterruptedException e) {
+			 System.out.println("Server shutdown interrupted: " + e.getMessage());
 		}
 
-		try {
-			((Persistable) company).save(FILE_NAME);
-			System.out.println("Data saved, Server stopped");
-		} catch (Exception e) {
-			System.out.println("Failed to save data");
-		}
 	}
 }
